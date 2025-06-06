@@ -1,21 +1,215 @@
-import type React from "react"
+"use client"
+
+import Link from "next/link"
+import { usePathname, useRouter } from "next/navigation"
+import { ShoppingCart, Heart, Menu, Search, User, LogIn, Settings, LogOut } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { MainNav } from "@/components/main-nav"
-import { SiteLogo } from "@/components/site-logo"
-import { cn } from "@/lib/utils"
-import { Cart } from "@/components/cart"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { SiteLogo } from "@/components/site-logo"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { useEffect, useState } from "react"
+import { getCurrentUser, getUserProfile, signOut } from "@/lib/auth"
+import { Badge } from "@/components/ui/badge"
+import { useCart } from "@/components/cart-provider"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
-interface SiteHeaderProps extends React.HTMLAttributes<HTMLElement> {}
+export function SiteHeader() {
+  const pathname = usePathname()
+  const router = useRouter()
+  const [user, setUser] = useState<any>(null)
+  const [userProfile, setUserProfile] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const { itemCount } = useCart()
 
-export const SiteHeader: React.FC<SiteHeaderProps> = ({ className, ...props }) => {
+  useEffect(() => {
+    const checkUser = async () => {
+      try {
+        const currentUser = await getCurrentUser()
+        setUser(currentUser)
+
+        if (currentUser) {
+          const profile = await getUserProfile(currentUser.id)
+          setUserProfile(profile)
+        }
+      } catch (error) {
+        console.error("Error checking user:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    checkUser()
+  }, [])
+
+  const handleSignOut = async () => {
+    try {
+      await signOut()
+      setUser(null)
+      setUserProfile(null)
+      router.push("/")
+    } catch (error) {
+      console.error("Error signing out:", error)
+    }
+  }
+
+  // Don't show header on sign-in and sign-up pages
+  if (pathname?.startsWith("/sign-in") || pathname?.startsWith("/sign-up")) {
+    return null
+  }
+
   return (
-    <header className={cn("sticky top-0 z-40 w-full border-b bg-background", className)} {...props}>
-      <div className="container flex h-16 items-center space-x-4 sm:justify-between sm:space-x-0">
+    <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="container flex h-16 items-center">
         <SiteLogo />
-        <MainNav className="mx-6 hidden md:block" />
-        <div className="flex items-center space-x-2">
-          <Cart />
-          <ThemeToggle />
+        <div className="hidden md:flex md:flex-1">
+          <MainNav />
+        </div>
+        <div className="flex flex-1 items-center justify-end space-x-4">
+          <div className="hidden md:flex md:items-center md:space-x-4">
+            <Link href="/search">
+              <Button variant="ghost" size="icon">
+                <Search className="h-5 w-5" />
+                <span className="sr-only">Search</span>
+              </Button>
+            </Link>
+            {user && (
+              <Link href="/wishlist">
+                <Button variant="ghost" size="icon">
+                  <Heart className="h-5 w-5" />
+                  <span className="sr-only">Wishlist</span>
+                </Button>
+              </Link>
+            )}
+            <Link href="/cart" className="relative">
+              <Button variant="ghost" size="icon">
+                <ShoppingCart className="h-5 w-5" />
+                {itemCount > 0 && (
+                  <Badge variant="destructive" className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 text-xs">
+                    {itemCount}
+                  </Badge>
+                )}
+                <span className="sr-only">Cart</span>
+              </Button>
+            </Link>
+            {!isLoading && user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={userProfile?.avatar_url || "/placeholder.svg"} alt={userProfile?.name} />
+                      <AvatarFallback>{userProfile?.name?.charAt(0) || "U"}</AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end" forceMount>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">{userProfile?.name}</p>
+                      <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/dashboard">Dashboard</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile">Profile</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/orders">Orders</Link>
+                  </DropdownMenuItem>
+                  {userProfile?.role === "admin" && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild>
+                        <Link href="/admin">
+                          <Settings className="mr-2 h-4 w-4" />
+                          Admin Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Link href="/sign-in">
+                <Button variant="outline" size="sm">
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Sign In
+                </Button>
+              </Link>
+            )}
+            <ThemeToggle />
+          </div>
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="md:hidden">
+                <Menu className="h-5 w-5" />
+                <span className="sr-only">Toggle menu</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[300px] sm:w-[400px]">
+              <nav className="flex flex-col gap-4 py-4">
+                <MainNav mobile />
+                <div className="flex flex-col gap-2 pt-4 border-t">
+                  <Link href="/search" className="flex items-center gap-2 px-2 py-1 text-lg">
+                    <Search className="h-5 w-5" />
+                    Search
+                  </Link>
+                  {user && (
+                    <Link href="/wishlist" className="flex items-center gap-2 px-2 py-1 text-lg">
+                      <Heart className="h-5 w-5" />
+                      Wishlist
+                    </Link>
+                  )}
+                  <Link href="/cart" className="flex items-center gap-2 px-2 py-1 text-lg">
+                    <ShoppingCart className="h-5 w-5" />
+                    Cart {itemCount > 0 && `(${itemCount})`}
+                  </Link>
+                  {!isLoading && user ? (
+                    <>
+                      <Link href="/dashboard" className="flex items-center gap-2 px-2 py-1 text-lg">
+                        <User className="h-5 w-5" />
+                        Dashboard
+                      </Link>
+                      {userProfile?.role === "admin" && (
+                        <Link href="/admin" className="flex items-center gap-2 px-2 py-1 text-lg">
+                          <Settings className="h-5 w-5" />
+                          Admin Dashboard
+                        </Link>
+                      )}
+                      <Button onClick={handleSignOut} variant="ghost" className="justify-start px-2 py-1 text-lg">
+                        <LogOut className="mr-2 h-5 w-5" />
+                        Sign Out
+                      </Button>
+                    </>
+                  ) : (
+                    <Link href="/sign-in" className="flex items-center gap-2 px-2 py-1 text-lg">
+                      <User className="h-5 w-5" />
+                      Sign In
+                    </Link>
+                  )}
+                  <div className="px-2 py-1">
+                    <ThemeToggle />
+                  </div>
+                </div>
+              </nav>
+            </SheetContent>
+          </Sheet>
         </div>
       </div>
     </header>

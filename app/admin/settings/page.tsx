@@ -8,12 +8,12 @@ import { NotificationSettings } from "@/components/admin/settings/notification-s
 import { SecuritySettings } from "@/components/admin/settings/security-settings"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-export default function SettingsPage() {
+export default function AdminSettingsPage() {
   return (
     <AdminCheck>
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">System Settings</h1>
+          <h1 className="text-3xl font-bold mb-2">Settings</h1>
           <p className="text-muted-foreground">Configure your store settings and preferences</p>
         </div>
 
@@ -26,23 +26,23 @@ export default function SettingsPage() {
             <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="general" className="mt-6">
+          <TabsContent value="general" className="mt-8">
             <GeneralSettings />
           </TabsContent>
 
-          <TabsContent value="payment" className="mt-6">
+          <TabsContent value="payment" className="mt-8">
             <PaymentSettings />
           </TabsContent>
 
-          <TabsContent value="shipping" className="mt-6">
+          <TabsContent value="shipping" className="mt-8">
             <ShippingSettings />
           </TabsContent>
 
-          <TabsContent value="notifications" className="mt-6">
+          <TabsContent value="notifications" className="mt-8">
             <NotificationSettings />
           </TabsContent>
 
-          <TabsContent value="security" className="mt-6">
+          <TabsContent value="security" className="mt-8">
             <SecuritySettings />
           </TabsContent>
         </Tabs>

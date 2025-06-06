@@ -1,106 +1,82 @@
 "use client"
 
 import type React from "react"
-
 import { createContext, useContext, useEffect, useState } from "react"
-import { toast } from "@/components/ui/use-toast"
 
-export type CartItem = {
+interface CartItem {
   id: string
   name: string
   price: number
-  image: string
   quantity: number
+  image?: string
+  slug: string
 }
 
-type CartContextType = {
+interface CartContextType {
   items: CartItem[]
-  addItem: (item: CartItem) => void
+  addItem: (item: Omit<CartItem, "quantity">) => void
   removeItem: (id: string) => void
   updateQuantity: (id: string, quantity: number) => void
   clearCart: () => void
-  subtotal: number
+  total: number
+  itemCount: number
+  isLoading: boolean
 }
 
-const CartContext = createContext<CartContextType>({
-  items: [],
-  addItem: () => {},
-  removeItem: () => {},
-  updateQuantity: () => {},
-  clearCart: () => {},
-  subtotal: 0,
-})
+const CartContext = createContext<CartContextType | undefined>(undefined)
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
-  const [subtotal, setSubtotal] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
 
   // Load cart from localStorage on mount
   useEffect(() => {
-    const storedCart = localStorage.getItem("cart")
-    if (storedCart) {
+    const savedCart = localStorage.getItem("cart")
+    if (savedCart) {
       try {
-        setItems(JSON.parse(storedCart))
+        setItems(JSON.parse(savedCart))
       } catch (error) {
-        console.error("Failed to parse cart from localStorage:", error)
+        console.error("Error loading cart from localStorage:", error)
       }
     }
+    setIsLoading(false)
   }, [])
 
-  // Update localStorage when cart changes
+  // Save cart to localStorage whenever items change
   useEffect(() => {
-    if (items.length > 0) {
+    if (!isLoading) {
       localStorage.setItem("cart", JSON.stringify(items))
-    } else {
-      localStorage.removeItem("cart")
     }
+  }, [items, isLoading])
 
-    // Calculate subtotal
-    const newSubtotal = items.reduce((total, item) => total + item.price * item.quantity, 0)
-    setSubtotal(newSubtotal)
-  }, [items])
-
-  const addItem = (item: CartItem) => {
+  const addItem = (newItem: Omit<CartItem, "quantity">) => {
     setItems((prevItems) => {
-      const existingItem = prevItems.find((i) => i.id === item.id)
-
+      const existingItem = prevItems.find((item) => item.id === newItem.id)
       if (existingItem) {
-        // Update quantity if item already exists
-        return prevItems.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + item.quantity } : i))
-      } else {
-        // Add new item
-        return [...prevItems, item]
+        return prevItems.map((item) => (item.id === newItem.id ? { ...item, quantity: item.quantity + 1 } : item))
       }
-    })
-
-    toast({
-      title: "Added to cart",
-      description: `${item.name} has been added to your cart.`,
+      return [...prevItems, { ...newItem, quantity: 1 }]
     })
   }
 
   const removeItem = (id: string) => {
     setItems((prevItems) => prevItems.filter((item) => item.id !== id))
-
-    toast({
-      title: "Removed from cart",
-      description: "Item has been removed from your cart.",
-    })
   }
 
   const updateQuantity = (id: string, quantity: number) => {
-    if (quantity < 1) {
+    if (quantity <= 0) {
       removeItem(id)
       return
     }
-
     setItems((prevItems) => prevItems.map((item) => (item.id === id ? { ...item, quantity } : item)))
   }
 
   const clearCart = () => {
     setItems([])
-    localStorage.removeItem("cart")
   }
+
+  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  const itemCount = items.reduce((sum, item) => sum + item.quantity, 0)
 
   return (
     <CartContext.Provider
@@ -110,7 +86,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         removeItem,
         updateQuantity,
         clearCart,
-        subtotal,
+        total,
+        itemCount,
+        isLoading,
       }}
     >
       {children}
@@ -118,4 +96,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
-export const useCart = () => useContext(CartContext)
+export function useCart() {
+  const context = useContext(CartContext)
+  if (context === undefined) {
+    throw new Error("useCart must be used within a CartProvider")
+  }
+  return context
+}

@@ -1,10 +1,9 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Users table (synced with Clerk)
+-- Users table (using Supabase auth)
 CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  clerk_id VARCHAR(255) UNIQUE NOT NULL,
+  id UUID PRIMARY KEY REFERENCES auth.users(id),
   email VARCHAR(255) UNIQUE NOT NULL,
   name VARCHAR(255),
   role VARCHAR(50) DEFAULT 'customer',
@@ -107,6 +106,18 @@ CREATE TABLE IF NOT EXISTS order_items (
   total DECIMAL(10,2) NOT NULL,
   product_snapshot JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Cart table
+CREATE TABLE IF NOT EXISTS cart (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+  variant_id UUID REFERENCES product_variants(id),
+  quantity INTEGER NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, product_id, variant_id)
 );
 
 -- Coupons table
@@ -221,6 +232,19 @@ CREATE TABLE IF NOT EXISTS inventory_movements (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Returns table
+CREATE TABLE IF NOT EXISTS returns (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  order_id UUID REFERENCES orders(id),
+  user_id UUID REFERENCES users(id),
+  reason VARCHAR(255) NOT NULL,
+  description TEXT,
+  status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'approved', 'rejected', 'completed'
+  refund_amount DECIMAL(10,2),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_products_slug ON products(slug);
@@ -232,6 +256,7 @@ CREATE INDEX IF NOT EXISTS idx_reviews_product_id ON reviews(product_id);
 CREATE INDEX IF NOT EXISTS idx_wishlists_user_id ON wishlists(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id);
+CREATE INDEX IF NOT EXISTS idx_cart_user_id ON cart(user_id);
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -251,3 +276,33 @@ CREATE TRIGGER update_coupons_updated_at BEFORE UPDATE ON coupons FOR EACH ROW E
 CREATE TRIGGER update_reviews_updated_at BEFORE UPDATE ON reviews FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_addresses_updated_at BEFORE UPDATE ON addresses FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_support_tickets_updated_at BEFORE UPDATE ON support_tickets FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_returns_updated_at BEFORE UPDATE ON returns FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cart ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wishlists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE addresses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE support_tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies
+CREATE POLICY "Users can view own profile" ON users FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "Users can view own orders" ON orders FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can create orders" ON orders FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can view own cart" ON cart FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own wishlist" ON wishlists FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own reviews" ON reviews FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own addresses" ON addresses FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own tickets" ON support_tickets FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can view own notifications" ON notifications FOR ALL USING (auth.uid() = user_id);
+
+-- Public read access for products and categories
+CREATE POLICY "Anyone can view active products" ON products FOR SELECT USING (is_active = true);
+CREATE POLICY "Anyone can view active categories" ON categories FOR SELECT USING (is_active = true);
+CREATE POLICY "Anyone can view approved reviews" ON reviews FOR SELECT USING (is_approved = true);

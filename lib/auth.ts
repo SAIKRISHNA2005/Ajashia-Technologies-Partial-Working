@@ -69,3 +69,27 @@ export async function checkUserRole(userId: string): Promise<string> {
   const profile = await getUserProfile(userId)
   return profile?.role || "customer"
 }
+
+export async function updateUserProfile(userId: string, updates: any) {
+  const { data, error } = await supabase.from("users").update(updates).eq("id", userId).select().single()
+
+  if (error) {
+    console.error("Error updating user profile:", error)
+    return null
+  }
+
+  return data
+}
+
+export async function resetPassword(email: string) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/reset-password`,
+  })
+
+  if (error) throw error
+}
+
+export async function updatePassword(password: string) {
+  const { error } = await supabase.auth.updateUser({ password })
+  if (error) throw error
+}
