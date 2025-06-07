@@ -1,52 +1,151 @@
 "use client"
 
-import { AdminCheck } from "@/components/admin-check"
-import { GeneralSettings } from "@/components/admin/settings/general-settings"
-import { PaymentSettings } from "@/components/admin/settings/payment-settings"
-import { ShippingSettings } from "@/components/admin/settings/shipping-settings"
-import { NotificationSettings } from "@/components/admin/settings/notification-settings"
-import { SecuritySettings } from "@/components/admin/settings/security-settings"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import React from "react"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { useToast } from "@/components/ui/use-toast"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Loader2, Upload } from "lucide-react"
+import Image from "next/image"
 
-export default function AdminSettingsPage() {
+export default function SettingsPage() {
+  const [loading, setLoading] = React.useState(false)
+  const [qrCode, setQrCode] = React.useState<string | null>(null)
+  const supabase = createClientComponentClient()
+  const { toast } = useToast()
+
+  React.useEffect(() => {
+    fetchSettings()
+  }, [])
+
+  const fetchSettings = async () => {
+    try {
+      const { data: settings, error } = await supabase
+        .from("settings")
+        .select("upi_qr_code")
+        .single()
+
+      if (error) throw error
+      if (settings?.upi_qr_code) {
+        setQrCode(settings.upi_qr_code)
+      }
+    } catch (error) {
+      console.error("Error fetching settings:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load settings",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      setLoading(true)
+
+      // Upload image to Supabase Storage
+      const fileExt = file.name.split(".").pop()
+      const fileName = `upi-qr-${Date.now()}.${fileExt}`
+      const { error: uploadError, data } = await supabase.storage
+        .from("settings")
+        .upload(fileName, file)
+
+      if (uploadError) throw uploadError
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from("settings")
+        .getPublicUrl(fileName)
+
+      // Update settings
+      const { error: updateError } = await supabase
+        .from("settings")
+        .update({ upi_qr_code: publicUrl })
+        .eq("id", 1)
+
+      if (updateError) throw updateError
+
+      setQrCode(publicUrl)
+      toast({
+        title: "Success",
+        description: "UPI QR code updated successfully",
+      })
+    } catch (error) {
+      console.error("Error updating QR code:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update UPI QR code",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <AdminCheck>
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Settings</h1>
-          <p className="text-muted-foreground">Configure your store settings and preferences</p>
-        </div>
-
-        <Tabs defaultValue="general" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="payment">Payment</TabsTrigger>
-            <TabsTrigger value="shipping">Shipping</TabsTrigger>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="general" className="mt-8">
-            <GeneralSettings />
-          </TabsContent>
-
-          <TabsContent value="payment" className="mt-8">
-            <PaymentSettings />
-          </TabsContent>
-
-          <TabsContent value="shipping" className="mt-8">
-            <ShippingSettings />
-          </TabsContent>
-
-          <TabsContent value="notifications" className="mt-8">
-            <NotificationSettings />
-          </TabsContent>
-
-          <TabsContent value="security" className="mt-8">
-            <SecuritySettings />
-          </TabsContent>
-        </Tabs>
-      </div>
-    </AdminCheck>
+    <div className="container mx-auto py-10">
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment Settings</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <Label>UPI QR Code</Label>
+            {qrCode ? (
+              <div className="relative h-64 w-64">
+                <Image
+                  src={qrCode}
+                  alt="UPI QR Code"
+                  fill
+                  className="object-contain"
+                />
+              </div>
+            ) : (
+              <div className="flex h-64 w-64 items-center justify-center rounded-lg border border-dashed">
+                <p className="text-sm text-muted-foreground">No QR code uploaded</p>
+              </div>
+            )}
+            <div className="flex items-center space-x-4">
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                disabled={loading}
+                className="hidden"
+                id="qr-upload"
+              />
+              <Label
+                htmlFor="qr-upload"
+                className="flex cursor-pointer items-center space-x-2"
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={loading}
+                  className="flex items-center"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload QR Code
+                    </>
+                  )}
+                </Button>
+              </Label>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   )
 }

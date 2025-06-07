@@ -1,14 +1,12 @@
 "use client"
 
+import React from 'react';
 import { AdminCheck } from "@/components/admin-check"
-import { InventoryOverview } from "@/components/admin/inventory/inventory-overview"
-import { InventoryTable } from "@/components/admin/inventory/inventory-table"
-import { InventoryFilters } from "@/components/admin/inventory/inventory-filters"
-import { LowStockAlerts } from "@/components/admin/inventory/low-stock-alerts"
-import { StockAdjustments } from "@/components/admin/inventory/stock-adjustments"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { InventoryList } from "@/components/admin/inventory-list"
+import { InventoryFilters } from "@/components/admin/inventory-filters"
+import { InventoryStats } from "@/components/admin/inventory-stats"
 
-export default function AdminInventoryPage() {
+const InventoryManagementPage = () => {
   return (
     <AdminCheck>
       <div className="container mx-auto px-4 py-8">
@@ -17,37 +15,20 @@ export default function AdminInventoryPage() {
           <p className="text-muted-foreground">Track and manage your product inventory</p>
         </div>
 
-        <InventoryOverview />
+        <InventoryStats />
 
-        <div className="mt-8">
-          <Tabs defaultValue="inventory" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="inventory">Inventory</TabsTrigger>
-              <TabsTrigger value="alerts">Low Stock Alerts</TabsTrigger>
-              <TabsTrigger value="adjustments">Stock Adjustments</TabsTrigger>
-            </TabsList>
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mt-8">
+          <aside className="lg:col-span-1">
+            <InventoryFilters />
+          </aside>
 
-            <TabsContent value="inventory" className="mt-8">
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                <aside className="lg:col-span-1">
-                  <InventoryFilters />
-                </aside>
-                <main className="lg:col-span-3">
-                  <InventoryTable />
-                </main>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="alerts" className="mt-8">
-              <LowStockAlerts />
-            </TabsContent>
-
-            <TabsContent value="adjustments" className="mt-8">
-              <StockAdjustments />
-            </TabsContent>
-          </Tabs>
+          <main className="lg:col-span-3">
+            <InventoryList />
+          </main>
         </div>
       </div>
     </AdminCheck>
-  )
-}
+  );
+};
+
+export default InventoryManagementPage;

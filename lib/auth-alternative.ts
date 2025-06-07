@@ -4,7 +4,7 @@ export async function createUserProfile(userId: string, email: string, name: str
   const { data, error } = await supabase
     .from("users")
     .insert({
-      clerk_id: userId,
+      id: userId,
       email,
       name,
       role: "customer",
@@ -21,7 +21,7 @@ export async function createUserProfile(userId: string, email: string, name: str
 }
 
 export async function getUserProfile(userId: string) {
-  const { data, error } = await supabase.from("users").select("*").eq("clerk_id", userId).single()
+  const { data, error } = await supabase.from("users").select("*").eq("id", userId).single()
 
   if (error) {
     console.error("Error fetching user profile:", error)
@@ -32,7 +32,7 @@ export async function getUserProfile(userId: string) {
 }
 
 export async function updateUserProfile(userId: string, updates: any) {
-  const { data, error } = await supabase.from("users").update(updates).eq("clerk_id", userId).select().single()
+  const { data, error } = await supabase.from("users").update(updates).eq("id", userId).select().single()
 
   if (error) {
     console.error("Error updating user profile:", error)

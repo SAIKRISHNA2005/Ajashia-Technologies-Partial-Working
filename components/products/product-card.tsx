@@ -23,14 +23,21 @@ export function ProductCard({ product }: ProductCardProps) {
   const { addItem: addToWishlist, isInWishlist, removeItem: removeFromWishlist } = useWishlist()
   const { addItem: addToComparison, isInComparison } = useComparison()
 
+  const getProductImage = () => {
+    if (Array.isArray(product.images) && product.images.length > 0) {
+      return product.images[0]
+    }
+    return "/placeholder.svg"
+  }
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault()
     addItem({
       id: product.id,
       name: product.name,
       price: product.price,
-      image: product.images[0] || "/placeholder.svg",
-      quantity: 1,
+      image: getProductImage(),
+      slug: product.id // Using product.id as slug since it's not in the Product type
     })
   }
 
@@ -43,7 +50,7 @@ export function ProductCard({ product }: ProductCardProps) {
         id: product.id,
         name: product.name,
         price: product.price,
-        image: product.images[0] || "/placeholder.svg",
+        image: getProductImage(),
       })
     }
   }
@@ -54,7 +61,7 @@ export function ProductCard({ product }: ProductCardProps) {
       id: product.id,
       name: product.name,
       price: product.price,
-      image: product.images[0] || "/placeholder.svg",
+      image: getProductImage(),
       category: product.category || "",
       specs: {
         Brand: "Ajashia",
@@ -64,7 +71,9 @@ export function ProductCard({ product }: ProductCardProps) {
     })
   }
 
-  const images = product.images?.length > 0 ? product.images.join(",") : "/placeholder.svg?height=300&width=300"
+  const images = Array.isArray(product.images) && product.images.length > 0 
+    ? product.images.join(",") 
+    : "/placeholder.svg?height=300&width=300"
 
   // Format price in Indian Rupees
   const formatPrice = (price: number) => {
@@ -76,7 +85,7 @@ export function ProductCard({ product }: ProductCardProps) {
   }
 
   return (
-    <Link href={`/products/${product.slug || product.id}`}>
+    <Link href={`/products/${product.id}`}>
       <Card className="group h-full overflow-hidden transition-all duration-300 hover:shadow-lg hover:scale-[1.02]">
         <div className="relative">
           <div className="flex justify-center p-4">

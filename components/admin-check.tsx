@@ -3,40 +3,44 @@
 import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
-import { checkUserRole } from "@/lib/auth"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
 export function AdminCheck({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
-  const { isLoaded, userId } = useAuth()
   const router = useRouter()
+  const supabase = createClientComponentClient()
 
   useEffect(() => {
     const checkAdminAccess = async () => {
-      if (isLoaded && !userId) {
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) {
         router.push("/sign-in")
         return
       }
 
-      if (userId) {
-        try {
-          const role = await checkUserRole(userId)
-          if (role === "admin") {
-            setIsAdmin(true)
-            setIsLoading(false)
-          } else {
-            router.push("/dashboard")
-          }
-        } catch (error) {
-          console.error("Error checking admin access:", error)
-          router.push("/sign-in")
+      try {
+        const { data: profile } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+
+        if (profile?.role === "admin") {
+          setIsAdmin(true)
+          setIsLoading(false)
+        } else {
+          router.push("/dashboard")
         }
+      } catch (error) {
+        console.error("Error checking admin access:", error)
+        router.push("/sign-in")
       }
     }
 
     checkAdminAccess()
-  }, [isLoaded, userId, router])
+  }, [router, supabase])
 
   if (isLoading) {
     return (

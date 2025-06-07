@@ -89,7 +89,7 @@ export function HeroSection() {
           >
             <div className="relative h-96 w-full overflow-hidden rounded-2xl bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/20 dark:to-purple-900/20 lg:h-full">
               <img
-                src="https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=800&h=600&fit=crop"
+                src="/hero-section-img.jpg"
                 alt="Electronics Components"
                 className="h-full w-full object-cover"
               />

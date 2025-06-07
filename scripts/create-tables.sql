@@ -1,18 +1,47 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Users table (synced with Clerk)
+-- Users table (synced with Supabase Auth)
 CREATE TABLE IF NOT EXISTS users (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  clerk_id VARCHAR(255) UNIQUE NOT NULL,
+  id UUID PRIMARY KEY REFERENCES auth.users(id),
   email VARCHAR(255) UNIQUE NOT NULL,
   name VARCHAR(255),
   role VARCHAR(50) DEFAULT 'customer',
+  phone VARCHAR(50),
+  bio TEXT,
+  company VARCHAR(255),
+  website VARCHAR(255),
   avatar_url TEXT,
-  phone VARCHAR(20),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
+
+-- Enable Row Level Security
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+-- Create policies
+CREATE POLICY "Users can view their own profile"
+  ON users FOR SELECT
+  USING (auth.uid() = id);
+
+CREATE POLICY "Users can update their own profile"
+  ON users FOR UPDATE
+  USING (auth.uid() = id);
+
+-- Create function to handle user creation
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.users (id, email, name, role)
+  VALUES (new.id, new.email, new.raw_user_meta_data->>'name', 'customer');
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Create trigger for new user creation
+CREATE OR REPLACE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- Categories table
 CREATE TABLE IF NOT EXISTS categories (
@@ -220,6 +249,45 @@ CREATE TABLE IF NOT EXISTS inventory_movements (
   created_by UUID REFERENCES users(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Create payments table
+CREATE TABLE IF NOT EXISTS payments (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  amount DECIMAL(10, 2) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  payment_method VARCHAR(20) NOT NULL,
+  transaction_id VARCHAR(100) UNIQUE NOT NULL,
+  upi_id VARCHAR(100),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Add RLS policies for payments
+ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own payments"
+  ON payments FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create their own payments"
+  ON payments FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- Create function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Create trigger for payments table
+CREATE TRIGGER update_payments_updated_at
+  BEFORE UPDATE ON payments
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id);

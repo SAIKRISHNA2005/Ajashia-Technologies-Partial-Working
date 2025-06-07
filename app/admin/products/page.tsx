@@ -1,38 +1,34 @@
 "use client"
 
+import React from 'react';
 import { AdminCheck } from "@/components/admin-check"
-import { ProductManagement } from "@/components/admin/product-management"
-import { ProductForm } from "@/components/admin/product-form"
-import { BulkOperations } from "@/components/admin/bulk-operations"
-import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
-import { useState } from "react"
+import { ProductList } from "@/components/admin/product-list"
+import { ProductFilters } from "@/components/admin/product-filters"
+import { ProductStats } from "@/components/admin/product-stats"
 
-export default function AdminProductsPage() {
-  const [showAddForm, setShowAddForm] = useState(false)
-
+const ProductManagementPage = () => {
   return (
     <AdminCheck>
       <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Product Management</h1>
-            <p className="text-muted-foreground">Manage your product catalog</p>
-          </div>
-          <Button onClick={() => setShowAddForm(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Product
-          </Button>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2">Product Management</h1>
+          <p className="text-muted-foreground">Manage your product catalog</p>
         </div>
 
-        <BulkOperations />
+        <ProductStats />
 
-        <div className="mt-8">
-          <ProductManagement />
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mt-8">
+          <aside className="lg:col-span-1">
+            <ProductFilters />
+          </aside>
+
+          <main className="lg:col-span-3">
+            <ProductList />
+          </main>
         </div>
-
-        {showAddForm && <ProductForm onClose={() => setShowAddForm(false)} />}
       </div>
     </AdminCheck>
-  )
-}
+  );
+};
+
+export default ProductManagementPage;

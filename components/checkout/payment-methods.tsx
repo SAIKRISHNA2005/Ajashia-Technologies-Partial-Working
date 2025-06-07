@@ -1,138 +1,181 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import React from "react"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { useRouter } from "next/navigation"
+import { useToast } from "@/components/ui/use-toast"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Card, CardContent } from "@/components/ui/card"
-import { CreditCard, Smartphone, DollarSign } from "lucide-react"
+import { Label } from "@/components/ui/label"
+import { Loader2, CreditCard, QrCode } from "lucide-react"
+import { useCart } from "@/components/cart-provider"
+import { UPIPayment } from "./upi-payment"
 
-interface PaymentMethodsProps {
-  onBack: () => void
-  onNext: () => void
+interface PaymentInfo {
+  orderId: string
+  payment_method: string
+  cardData?: {
+    number: string
+    expiry: string
+    cvc: string
+  }
 }
 
-export function PaymentMethods({ onBack, onNext }: PaymentMethodsProps) {
-  const [paymentMethod, setPaymentMethod] = useState("card")
-  const [cardData, setCardData] = useState({
-    number: "",
-    expiry: "",
-    cvv: "",
-    name: "",
-  })
+export function PaymentMethods() {
+  const [selectedMethod, setSelectedMethod] = React.useState<string>("credit")
+  const [loading, setLoading] = React.useState(false)
+  const [paymentInfo, setPaymentInfo] = React.useState<PaymentInfo | null>(null)
+  const { cart } = useCart()
+  const router = useRouter()
+  const { toast } = useToast()
+  const supabase = createClientComponentClient()
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    onNext()
+  const total = cart.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  )
+
+  const handleSubmit = async (txnId?: string) => {
+    setLoading(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in to complete your order",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Get shipping address
+      const { data: addresses } = await supabase
+        .from("addresses")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("is_default", true)
+        .single()
+
+      if (!addresses) {
+        toast({
+          title: "Shipping address required",
+          description: "Please add a shipping address before proceeding",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Create order
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .insert({
+          user_id: user.id,
+          total_amount: total,
+          status: "pending",
+          shipping_address_id: addresses.id,
+          payment_method: selectedMethod,
+          payment_status: "pending",
+          transaction_id: txnId,
+        })
+        .select()
+        .single()
+
+      if (orderError) throw orderError
+
+      // Create order items
+      const orderItems = cart.map(item => ({
+        order_id: order.id,
+        product_id: item.id,
+        quantity: item.quantity,
+        price: item.price,
+      }))
+
+      const { error: itemsError } = await supabase
+        .from("order_items")
+        .insert(orderItems)
+
+      if (itemsError) throw itemsError
+
+      // Clear cart
+      await supabase
+        .from("cart")
+        .delete()
+        .eq("user_id", user.id)
+
+      setPaymentInfo({
+        orderId: order.id,
+        payment_method: selectedMethod,
+      })
+
+      toast({
+        title: "Order placed successfully",
+        description: "Your order has been placed and is being processed",
+      })
+
+      router.push(`/orders/${order.id}`)
+    } catch (error: any) {
+      console.error("Error placing order:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to place order. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold mb-4">Payment Method</h3>
-        <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod}>
-          <div className="space-y-3">
-            <Card className={paymentMethod === "card" ? "ring-2 ring-primary" : ""}>
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="card" id="card" />
-                  <Label htmlFor="card" className="flex items-center gap-2 cursor-pointer">
-                    <CreditCard className="h-5 w-5" />
-                    Credit/Debit Card
-                  </Label>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className={paymentMethod === "paypal" ? "ring-2 ring-primary" : ""}>
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="paypal" id="paypal" />
-                  <Label htmlFor="paypal" className="flex items-center gap-2 cursor-pointer">
-                    <Smartphone className="h-5 w-5" />
-                    PayPal
-                  </Label>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className={paymentMethod === "apple" ? "ring-2 ring-primary" : ""}>
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="apple" id="apple" />
-                  <Label htmlFor="apple" className="flex items-center gap-2 cursor-pointer">
-                    <DollarSign className="h-5 w-5" />
-                    Apple Pay
-                  </Label>
-                </div>
-              </CardContent>
-            </Card>
+    <Card>
+      <CardHeader>
+        <CardTitle>Payment Method</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <RadioGroup
+          value={selectedMethod}
+          onValueChange={setSelectedMethod}
+          className="space-y-4"
+        >
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="credit" id="credit" />
+            <Label htmlFor="credit" className="flex items-center">
+              <CreditCard className="mr-2 h-4 w-4" />
+              Credit Card
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="upi" id="upi" />
+            <Label htmlFor="upi" className="flex items-center">
+              <QrCode className="mr-2 h-4 w-4" />
+              UPI Payment
+            </Label>
           </div>
         </RadioGroup>
-      </div>
 
-      {paymentMethod === "card" && (
-        <div className="space-y-4">
-          <h4 className="font-semibold">Card Information</h4>
-
-          <div>
-            <Label htmlFor="cardName">Cardholder Name</Label>
-            <Input
-              id="cardName"
-              required
-              value={cardData.name}
-              onChange={(e) => setCardData((prev) => ({ ...prev, name: e.target.value }))}
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="cardNumber">Card Number</Label>
-            <Input
-              id="cardNumber"
-              placeholder="1234 5678 9012 3456"
-              required
-              value={cardData.number}
-              onChange={(e) => setCardData((prev) => ({ ...prev, number: e.target.value }))}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="expiry">Expiry Date</Label>
-              <Input
-                id="expiry"
-                placeholder="MM/YY"
-                required
-                value={cardData.expiry}
-                onChange={(e) => setCardData((prev) => ({ ...prev, expiry: e.target.value }))}
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="cvv">CVV</Label>
-              <Input
-                id="cvv"
-                placeholder="123"
-                required
-                value={cardData.cvv}
-                onChange={(e) => setCardData((prev) => ({ ...prev, cvv: e.target.value }))}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="flex gap-4">
-        <Button type="button" variant="outline" onClick={onBack} className="flex-1">
-          Back to Shipping
-        </Button>
-        <Button type="submit" className="flex-1">
-          Review Order
-        </Button>
-      </div>
-    </form>
+        {selectedMethod === "upi" ? (
+          <UPIPayment
+            amount={total}
+            onPaymentSuccess={(txnId) => handleSubmit(txnId)}
+          />
+        ) : (
+          <Button
+            className="w-full"
+            onClick={() => handleSubmit()}
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              "Pay Now"
+            )}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   )
 }

@@ -1,18 +1,18 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { getCurrentUser } from "@/lib/auth"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
 export function AuthCheck({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
+  const supabase = createClientComponentClient()
 
   useEffect(() => {
     const checkAuth = async () => {
-      const user = await getCurrentUser()
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         router.push("/sign-in")
       } else {
@@ -21,7 +21,7 @@ export function AuthCheck({ children }: { children: React.ReactNode }) {
     }
 
     checkAuth()
-  }, [router])
+  }, [router, supabase])
 
   if (isLoading) {
     return (

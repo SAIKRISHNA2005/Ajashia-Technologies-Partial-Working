@@ -1,35 +1,80 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useCheckout } from "./checkout-provider"
+import { toast } from "@/components/ui/use-toast"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { useToast } from "@/components/ui/use-toast"
 
 interface CheckoutFormProps {
-  onNext: () => void
+  onNext?: () => void
 }
 
 export function CheckoutForm({ onNext }: CheckoutFormProps) {
+  const { shippingAddress, setShippingAddress } = useCheckout()
+  const supabase = createClientComponentClient()
+  const [loading, setLoading] = useState(false)
+  const { toast } = useToast()
+
   const [formData, setFormData] = useState({
-    email: "",
-    firstName: "",
-    lastName: "",
-    address: "",
-    city: "",
-    state: "",
-    zipCode: "",
-    country: "US",
-    phone: "",
-    saveAddress: false,
+    email: shippingAddress?.email || "",
+    firstName: shippingAddress?.firstName || "",
+    lastName: shippingAddress?.lastName || "",
+    address: shippingAddress?.address || "",
+    city: shippingAddress?.city || "",
+    state: shippingAddress?.state || "",
+    zipCode: shippingAddress?.zipCode || "",
+    country: shippingAddress?.country || "IN",
+    phone: shippingAddress?.phone || "",
+    saveAddress: shippingAddress?.saveAddress || false,
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    onNext()
+    setLoading(true)
+
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error("Please sign in to continue")
+
+      // Save address if requested
+      if (formData.saveAddress) {
+        const { error } = await supabase
+          .from("addresses")
+          .upsert({
+            user_id: user.id,
+            ...formData,
+          })
+
+        if (error) throw error
+      }
+
+      // Update checkout context
+      setShippingAddress(formData)
+      toast({
+        title: "Shipping information saved",
+        description: "Your shipping details have been updated.",
+      })
+
+      if (onNext) {
+        onNext()
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save shipping information",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -53,6 +98,9 @@ export function CheckoutForm({ onNext }: CheckoutFormProps) {
             <Input
               id="phone"
               type="tel"
+              required
+              pattern="[0-9]{10}"
+              title="Please enter a valid 10-digit phone number"
               value={formData.phone}
               onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
             />
@@ -113,20 +161,26 @@ export function CheckoutForm({ onNext }: CheckoutFormProps) {
                 <SelectValue placeholder="Select state" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="CA">California</SelectItem>
-                <SelectItem value="NY">New York</SelectItem>
-                <SelectItem value="TX">Texas</SelectItem>
-                <SelectItem value="FL">Florida</SelectItem>
+                <SelectItem value="AP">Andhra Pradesh</SelectItem>
+                <SelectItem value="KA">Karnataka</SelectItem>
+                <SelectItem value="TN">Tamil Nadu</SelectItem>
+                <SelectItem value="MH">Maharashtra</SelectItem>
+                <SelectItem value="DL">Delhi</SelectItem>
+                <SelectItem value="GJ">Gujarat</SelectItem>
+                <SelectItem value="UP">Uttar Pradesh</SelectItem>
+                <SelectItem value="WB">West Bengal</SelectItem>
                 {/* Add more states */}
               </SelectContent>
             </Select>
           </div>
 
           <div>
-            <Label htmlFor="zipCode">ZIP Code</Label>
+            <Label htmlFor="zipCode">PIN Code</Label>
             <Input
               id="zipCode"
               required
+              pattern="[0-9]{6}"
+              title="Please enter a valid 6-digit PIN code"
               value={formData.zipCode}
               onChange={(e) => setFormData((prev) => ({ ...prev, zipCode: e.target.value }))}
             />
@@ -142,9 +196,10 @@ export function CheckoutForm({ onNext }: CheckoutFormProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="IN">India</SelectItem>
                 <SelectItem value="US">United States</SelectItem>
-                <SelectItem value="CA">Canada</SelectItem>
                 <SelectItem value="UK">United Kingdom</SelectItem>
+                <SelectItem value="CA">Canada</SelectItem>
                 <SelectItem value="AU">Australia</SelectItem>
               </SelectContent>
             </Select>
@@ -161,8 +216,8 @@ export function CheckoutForm({ onNext }: CheckoutFormProps) {
         <Label htmlFor="saveAddress">Save this address for future orders</Label>
       </div>
 
-      <Button type="submit" className="w-full">
-        Continue to Payment
+      <Button type="submit" className="w-full" disabled={loading}>
+        {loading ? "Saving..." : "Continue to Payment"}
       </Button>
     </form>
   )

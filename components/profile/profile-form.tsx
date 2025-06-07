@@ -1,38 +1,70 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { useUser } from "@clerk/nextjs"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { toast } from "@/components/ui/use-toast"
 
 export function ProfileForm() {
-  const { user } = useUser()
+  const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const supabase = createClientComponentClient()
   const [formData, setFormData] = useState({
-    firstName: user?.firstName || "",
-    lastName: user?.lastName || "",
-    email: user?.emailAddresses[0]?.emailAddress || "",
-    phone: user?.phoneNumbers[0]?.phoneNumber || "",
+    name: "",
+    email: "",
+    phone: "",
     bio: "",
     company: "",
     website: "",
   })
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', user.id)
+          .single()
+        setUser({ ...user, ...profile })
+        setFormData({
+          name: profile?.name || "",
+          email: user.email || "",
+          phone: profile?.phone || "",
+          bio: profile?.bio || "",
+          company: profile?.company || "",
+          website: profile?.website || "",
+        })
+      }
+    }
+    getUser()
+  }, [supabase])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
     try {
-      // Update user profile
-      await user?.update({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-      })
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error("No user found")
+
+      const { error } = await supabase
+        .from('users')
+        .update({
+          name: formData.name,
+          phone: formData.phone,
+          bio: formData.bio,
+          company: formData.company,
+          website: formData.website,
+        })
+        .eq('id', user.id)
+
+      if (error) throw error
 
       toast({
         title: "Profile updated",
@@ -49,28 +81,18 @@ export function ProfileForm() {
     }
   }
 
+  if (!user) return null
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="firstName">First Name</Label>
-          <Input
-            id="firstName"
-            value={formData.firstName}
-            onChange={(e) => setFormData((prev) => ({ ...prev, firstName: e.target.value }))}
-            required
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="lastName">Last Name</Label>
-          <Input
-            id="lastName"
-            value={formData.lastName}
-            onChange={(e) => setFormData((prev) => ({ ...prev, lastName: e.target.value }))}
-            required
-          />
-        </div>
+      <div>
+        <Label htmlFor="name">Full Name</Label>
+        <Input
+          id="name"
+          value={formData.name}
+          onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+          required
+        />
       </div>
 
       <div>

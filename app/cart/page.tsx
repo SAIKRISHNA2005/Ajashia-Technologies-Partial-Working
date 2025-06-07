@@ -10,9 +10,19 @@ import Link from "next/link"
 import { RelatedProducts } from "@/components/products/related-products"
 
 export default function CartPage() {
-  const { items, subtotal } = useCart()
+  const { cart, isLoading } = useCart()
 
-  if (items.length === 0) {
+  if (isLoading) {
+    return (
+      <div className="container mx-auto px-4 py-16">
+        <div className="text-center">
+          <p>Loading cart...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!cart || cart.length === 0) {
     return (
       <div className="container mx-auto px-4 py-16">
         <div className="text-center max-w-md mx-auto">
@@ -34,7 +44,7 @@ export default function CartPage() {
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Shopping Cart</h1>
-        <p className="text-muted-foreground">{items.length} items in your cart</p>
+        <p className="text-muted-foreground">{cart.length} items in your cart</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -44,7 +54,7 @@ export default function CartPage() {
               <CardTitle>Cart Items</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {items.map((item) => (
+              {cart.map((item) => (
                 <CartItem key={item.id} item={item} />
               ))}
             </CardContent>

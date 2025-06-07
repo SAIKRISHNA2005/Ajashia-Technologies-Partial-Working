@@ -11,10 +11,11 @@ import Link from "next/link"
 import { ShoppingBag } from "lucide-react"
 
 export function CartSummary() {
-  const { items, subtotal } = useCart()
+  const { cart } = useCart()
   const [couponCode, setCouponCode] = useState("")
   const [discount, setDiscount] = useState(0)
 
+  const subtotal = cart.reduce((total, item) => total + (item.price * item.quantity), 0)
   const shipping = subtotal > 2000 ? 0 : 199 // Free shipping over ₹2000
   const tax = subtotal * 0.18 // 18% GST
   const total = subtotal + shipping + tax - discount
@@ -45,7 +46,7 @@ export function CartSummary() {
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <div className="flex justify-between">
-            <span>Subtotal ({items.length} items)</span>
+            <span>Subtotal ({cart.length} items)</span>
             <span>{formatPrice(subtotal)}</span>
           </div>
 

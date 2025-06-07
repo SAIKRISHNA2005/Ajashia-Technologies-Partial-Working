@@ -1,270 +1,350 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useEffect } from "react"
-import { AdminCheck } from "@/components/admin-check"
+import React, { useState, useEffect } from "react"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
-import { Plus, Edit, Trash2, ImageIcon } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { toast } from "@/components/ui/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { PlusCircle, Edit, Trash2, Loader2 } from "lucide-react"
 
-export default function CategoriesManagementPage() {
-  const [categories, setCategories] = useState([])
+interface Category {
+  id: string
+  name: string
+  description?: string
+  slug: string
+  created_at: string
+  updated_at: string
+}
+
+export default function CategoryManagementPage() {
+  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
-  const [isCreating, setIsCreating] = useState(false)
-  const [editingCategory, setEditingCategory] = useState<any>(null)
-  const [formData, setFormData] = useState({
-    name: "",
-    slug: "",
-    description: "",
-    image_url: "",
-    is_active: true,
-  })
+  const [error, setError] = useState<string | null>(null)
+
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState("")
+  const [newCategoryDescription, setNewCategoryDescription] = useState("")
+  const [isAdding, setIsAdding] = useState(false)
+
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+  const [editedCategoryName, setEditedCategoryName] = useState("")
+  const [editedCategoryDescription, setEditedCategoryDescription] = useState("")
+  const [isUpdating, setIsUpdating] = useState(false)
+
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const supabase = createClientComponentClient()
 
   useEffect(() => {
     fetchCategories()
   }, [])
 
   const fetchCategories = async () => {
+    setLoading(true)
+    setError(null)
     try {
-      const response = await fetch("/api/admin/categories")
-      const data = await response.json()
-      setCategories(data)
-    } catch (error) {
-      console.error("Error fetching categories:", error)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user || user.user_metadata.role !== "admin") {
+        setError("Access Denied: You must be an administrator to view this page.")
+        setLoading(false)
+        return
+      }
+
+      const { data, error } = await supabase
+        .from("categories")
+        .select("*")
+        .order("name", { ascending: true })
+
+      if (error) throw error
+      setCategories(data || [])
+    } catch (err: any) {
+      console.error("Error fetching categories:", err)
+      setError(err.message || "Failed to load categories.")
+      toast({
+        title: "Error",
+        description: err.message || "Failed to load categories.",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsCreating(true)
-
+    setIsAdding(true)
     try {
-      const url = editingCategory ? `/api/admin/categories/${editingCategory.id}` : "/api/admin/categories"
-      const method = editingCategory ? "PUT" : "POST"
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
+      const slug = newCategoryName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-*|-*$/g, "")
+      const { error } = await supabase.from("categories").insert({
+        name: newCategoryName,
+        description: newCategoryDescription,
+        slug: slug,
       })
 
-      if (response.ok) {
-        resetForm()
-        fetchCategories()
-      }
-    } catch (error) {
-      console.error("Error saving category:", error)
+      if (error) throw error
+
+      toast({
+        title: "Category Added",
+        description: `Category "${newCategoryName}" has been successfully added.`, 
+      })
+      setIsAddDialogOpen(false)
+      setNewCategoryName("")
+      setNewCategoryDescription("")
+      fetchCategories()
+    } catch (err: any) {
+      console.error("Error adding category:", err)
+      toast({
+        title: "Error",
+        description: err.message || "Failed to add category.",
+        variant: "destructive",
+      })
     } finally {
-      setIsCreating(false)
+      setIsAdding(false)
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this category?")) return
-
-    try {
-      const response = await fetch(`/api/admin/categories/${id}`, {
-        method: "DELETE",
-      })
-
-      if (response.ok) {
-        fetchCategories()
-      }
-    } catch (error) {
-      console.error("Error deleting category:", error)
-    }
-  }
-
-  const resetForm = () => {
-    setFormData({
-      name: "",
-      slug: "",
-      description: "",
-      image_url: "",
-      is_active: true,
-    })
-    setEditingCategory(null)
-  }
-
-  const handleEdit = (category: any) => {
+  const handleEditClick = (category: Category) => {
     setEditingCategory(category)
-    setFormData({
-      name: category.name,
-      slug: category.slug,
-      description: category.description || "",
-      image_url: category.image_url || "",
-      is_active: category.is_active,
-    })
+    setEditedCategoryName(category.name)
+    setEditedCategoryDescription(category.description || "")
+    setIsEditDialogOpen(true)
+  }
+
+  const handleUpdateCategory = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingCategory) return
+    setIsUpdating(true)
+    try {
+      const slug = editedCategoryName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-*|-*$/g, "")
+      const { error } = await supabase
+        .from("categories")
+        .update({
+          name: editedCategoryName,
+          description: editedCategoryDescription,
+          slug: slug,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", editingCategory.id)
+
+      if (error) throw error
+
+      toast({
+        title: "Category Updated",
+        description: `Category "${editedCategoryName}" has been successfully updated.`, 
+      })
+      setIsEditDialogOpen(false)
+      setEditingCategory(null)
+      fetchCategories()
+    } catch (err: any) {
+      console.error("Error updating category:", err)
+      toast({
+        title: "Error",
+        description: err.message || "Failed to update category.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const handleDeleteClick = (categoryId: string) => {
+    setDeletingCategoryId(categoryId)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const confirmDeleteCategory = async () => {
+    if (!deletingCategoryId) return
+    setIsDeleting(true)
+    try {
+      const { error } = await supabase.from("categories").delete().eq("id", deletingCategoryId)
+
+      if (error) throw error
+
+      toast({
+        title: "Category Deleted",
+        description: "Category has been successfully deleted.",
+      })
+      setIsDeleteDialogOpen(false)
+      setDeletingCategoryId(null)
+      fetchCategories()
+    } catch (err: any) {
+      console.error("Error deleting category:", err)
+      toast({
+        title: "Error",
+        description: err.message || "Failed to delete category.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="mt-4 text-lg text-muted-foreground">Loading categories...</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-destructive">
+        <p className="text-lg">{error}</p>
+        {error.includes("administrator") && (
+          <p className="text-sm text-muted-foreground mt-2">Please ensure you are signed in as an admin.</p>
+        )}
+      </div>
+    )
   }
 
   return (
-    <AdminCheck>
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Category Management</h1>
-            <p className="text-muted-foreground">Manage product categories and organization</p>
-          </div>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button onClick={resetForm}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Category
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>{editingCategory ? "Edit Category" : "Add New Category"}</DialogTitle>
-                <DialogDescription>
-                  {editingCategory ? "Update category information" : "Create a new product category"}
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Category Name</Label>
-                  <Input
-                    id="name"
-                    placeholder="Electronics, Clothing, etc."
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="slug">URL Slug</Label>
-                  <Input
-                    id="slug"
-                    placeholder="electronics, clothing, etc."
-                    value={formData.slug}
-                    onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Category description..."
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="image_url">Image URL</Label>
-                  <Input
-                    id="image_url"
-                    placeholder="https://example.com/image.jpg"
-                    value={formData.image_url}
-                    onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                  />
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="is_active"
-                    checked={formData.is_active}
-                    onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-                  />
-                  <Label htmlFor="is_active">Active</Label>
-                </div>
-
-                <Button type="submit" className="w-full" disabled={isCreating}>
-                  {isCreating ? "Saving..." : editingCategory ? "Update Category" : "Create Category"}
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Categories</CardTitle>
-            <CardDescription>Manage your product categories</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Image</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Slug</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Products</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {categories.map((category: any) => (
-                    <TableRow key={category.id}>
-                      <TableCell>
-                        {category.image_url ? (
-                          <img
-                            src={category.image_url || "/placeholder.svg"}
-                            alt={category.name}
-                            className="w-10 h-10 rounded object-cover"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded bg-muted flex items-center justify-center">
-                            <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-medium">{category.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{category.slug}</TableCell>
-                      <TableCell>
-                        <Badge variant={category.is_active ? "default" : "secondary"}>
-                          {category.is_active ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{category.product_count || 0}</TableCell>
-                      <TableCell>{new Date(category.created_at).toLocaleDateString()}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button variant="ghost" size="sm" onClick={() => handleEdit(category)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleDelete(category.id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+    <div className="container max-w-5xl py-8">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Category Management</h1>
+        <Button onClick={() => setIsAddDialogOpen(true)}>
+          <PlusCircle className="mr-2 h-4 w-4" />
+          Add New Category
+        </Button>
       </div>
-    </AdminCheck>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Slug</TableHead>
+                <TableHead className="w-[100px] text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {categories.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                    No categories found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                categories.map((category) => (
+                  <TableRow key={category.id}>
+                    <TableCell className="font-medium">{category.name}</TableCell>
+                    <TableCell>{category.description || "-"}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{category.slug}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end space-x-2">
+                        <Button variant="outline" size="icon" onClick={() => handleEditClick(category)}>
+                          <Edit className="h-4 w-4" />
+                          <span className="sr-only">Edit</span>
+                        </Button>
+                        <Button variant="destructive" size="icon" onClick={() => handleDeleteClick(category.id)}>
+                          <Trash2 className="h-4 w-4" />
+                          <span className="sr-only">Delete</span>
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Add Category Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Category</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAddCategory} className="grid gap-4 py-4">
+            <div>
+              <Label htmlFor="newCategoryName">Category Name</Label>
+              <Input
+                id="newCategoryName"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="newCategoryDescription">Description (Optional)</Label>
+              <Input
+                id="newCategoryDescription"
+                value={newCategoryDescription}
+                onChange={(e) => setNewCategoryDescription(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={isAdding}>
+                {isAdding ? "Adding..." : "Add Category"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Category Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Category</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleUpdateCategory} className="grid gap-4 py-4">
+            <div>
+              <Label htmlFor="editedCategoryName">Category Name</Label>
+              <Input
+                id="editedCategoryName"
+                value={editedCategoryName}
+                onChange={(e) => setEditedCategoryName(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="editedCategoryDescription">Description (Optional)</Label>
+              <Input
+                id="editedCategoryDescription"
+                value={editedCategoryDescription}
+                onChange={(e) => setEditedCategoryDescription(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={isUpdating}>
+                {isUpdating ? "Updating..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Category Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Deletion</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this category? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDeleteCategory} disabled={isDeleting}>
+              {isDeleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 }

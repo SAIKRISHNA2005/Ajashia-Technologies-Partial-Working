@@ -1,354 +1,245 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useEffect } from "react"
-import { AdminCheck } from "@/components/admin-check"
+import React, { useState, useEffect } from "react"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { MessageCircle, Clock, CheckCircle, AlertCircle, User } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { toast } from "@/components/ui/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { format } from "date-fns"
+import { MessageSquare, Loader2, Search, Filter, Eye } from "lucide-react"
+import Link from "next/link"
+import { Badge } from "@/components/ui/badge"
 
-export default function AdminSupportPage() {
-  const [tickets, setTickets] = useState([])
-  const [selectedTicket, setSelectedTicket] = useState<any>(null)
-  const [messages, setMessages] = useState([])
-  const [newMessage, setNewMessage] = useState("")
+interface Ticket {
+  id: string
+  subject: string
+  description: string
+  status: "open" | "pending" | "closed"
+  priority: "low" | "medium" | "high"
+  created_at: string
+  updated_at: string
+  user_id: string
+  users: { // Assuming users table is joined for user details
+    email: string
+    user_metadata?: { name?: string }
+  } | null
+}
+
+export default function AdminSupportManagementPage() {
+  const [tickets, setTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [filterStatus, setFilterStatus] = useState<string>("all")
+  const [filterPriority, setFilterPriority] = useState<string>("all")
+  const [searchTerm, setSearchTerm] = useState("")
+  const supabase = createClientComponentClient()
 
   useEffect(() => {
     fetchTickets()
-  }, [])
+  }, [filterStatus, filterPriority, searchTerm])
 
   const fetchTickets = async () => {
+    setLoading(true)
+    setError(null)
     try {
-      const response = await fetch("/api/admin/support/tickets")
-      const data = await response.json()
-      setTickets(data)
-    } catch (error) {
-      console.error("Error fetching tickets:", error)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user || user.user_metadata.role !== "admin") {
+        setError("Access Denied: You must be an administrator to view this page.")
+        setLoading(false)
+        return
+      }
+
+      let query = supabase
+        .from("support_tickets")
+        .select(`
+          id,
+          subject,
+          description,
+          status,
+          priority,
+          created_at,
+          updated_at,
+          user_id,
+          users ( email, user_metadata )
+        `)
+
+      if (filterStatus !== "all") {
+        query = query.eq("status", filterStatus)
+      }
+      if (filterPriority !== "all") {
+        query = query.eq("priority", filterPriority)
+      }
+      if (searchTerm) {
+        query = query.ilike("subject", `%${searchTerm}%`)
+      }
+
+      const { data, error } = await query.order("created_at", { ascending: false })
+
+      if (error) throw error
+      setTickets(data || [])
+    } catch (err: any) {
+      console.error("Error fetching tickets:", err)
+      setError(err.message || "Failed to load tickets.")
+      toast({
+        title: "Error",
+        description: err.message || "Failed to load tickets.",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  const fetchTicketMessages = async (ticketId: string) => {
-    try {
-      const response = await fetch(`/api/admin/support/tickets/${ticketId}/messages`)
-      const data = await response.json()
-      setMessages(data)
-    } catch (error) {
-      console.error("Error fetching messages:", error)
-    }
-  }
-
-  const handleStatusUpdate = async (ticketId: string, status: string) => {
-    try {
-      const response = await fetch(`/api/admin/support/tickets/${ticketId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ status }),
-      })
-
-      if (response.ok) {
-        fetchTickets()
-        if (selectedTicket?.id === ticketId) {
-          setSelectedTicket({ ...selectedTicket, status })
-        }
-      }
-    } catch (error) {
-      console.error("Error updating ticket status:", error)
-    }
-  }
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newMessage.trim() || !selectedTicket) return
-
-    try {
-      const response = await fetch(`/api/admin/support/tickets/${selectedTicket.id}/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: newMessage,
-          is_internal: false,
-        }),
-      })
-
-      if (response.ok) {
-        setNewMessage("")
-        fetchTicketMessages(selectedTicket.id)
-      }
-    } catch (error) {
-      console.error("Error sending message:", error)
-    }
-  }
-
-  const getStatusIcon = (status: string) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case "open":
-        return <AlertCircle className="h-4 w-4 text-red-500" />
-      case "in_progress":
-        return <Clock className="h-4 w-4 text-yellow-500" />
-      case "resolved":
-        return <CheckCircle className="h-4 w-4 text-green-500" />
+        return <Badge variant="destructive" className="capitalize">Open</Badge>
+      case "pending":
+        return <Badge variant="secondary" className="capitalize">Pending</Badge>
       case "closed":
-        return <CheckCircle className="h-4 w-4 text-gray-500" />
+        return <Badge className="capitalize">Closed</Badge>
       default:
-        return <MessageCircle className="h-4 w-4 text-blue-500" />
+        return <Badge variant="outline" className="capitalize">N/A</Badge>
     }
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "open":
-        return "bg-red-100 text-red-800"
-      case "in_progress":
-        return "bg-yellow-100 text-yellow-800"
-      case "resolved":
-        return "bg-green-100 text-green-800"
-      case "closed":
-        return "bg-gray-100 text-gray-800"
-      default:
-        return "bg-blue-100 text-blue-800"
-    }
-  }
-
-  const getPriorityColor = (priority: string) => {
+  const getPriorityBadge = (priority: string) => {
     switch (priority) {
-      case "urgent":
-        return "bg-red-100 text-red-800"
-      case "high":
-        return "bg-orange-100 text-orange-800"
-      case "medium":
-        return "bg-yellow-100 text-yellow-800"
       case "low":
-        return "bg-green-100 text-green-800"
+        return <Badge variant="secondary" className="capitalize">Low</Badge>
+      case "medium":
+        return <Badge variant="secondary" className="capitalize">Medium</Badge>
+      case "high":
+        return <Badge variant="destructive" className="capitalize">High</Badge>
       default:
-        return "bg-gray-100 text-gray-800"
+        return <Badge variant="outline" className="capitalize">N/A</Badge>
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="mt-4 text-lg text-muted-foreground">Loading support tickets...</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-destructive">
+        <p className="text-lg">{error}</p>
+        {error.includes("administrator") && (
+          <p className="text-sm text-muted-foreground mt-2">Please ensure you are signed in as an admin.</p>
+        )}
+      </div>
+    )
   }
 
   return (
-    <AdminCheck>
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Support Management</h1>
-          <p className="text-muted-foreground">Manage customer support tickets and inquiries</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <AlertCircle className="h-8 w-8 text-red-500" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Open Tickets</p>
-                  <p className="text-2xl font-bold">{tickets.filter((t: any) => t.status === "open").length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <Clock className="h-8 w-8 text-yellow-500" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">In Progress</p>
-                  <p className="text-2xl font-bold">{tickets.filter((t: any) => t.status === "in_progress").length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <CheckCircle className="h-8 w-8 text-green-500" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Resolved</p>
-                  <p className="text-2xl font-bold">{tickets.filter((t: any) => t.status === "resolved").length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <MessageCircle className="h-8 w-8 text-blue-500" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Total Tickets</p>
-                  <p className="text-2xl font-bold">{tickets.length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Support Tickets</CardTitle>
-            <CardDescription>Manage and respond to customer support requests</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Ticket ID</TableHead>
-                    <TableHead>Subject</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tickets.map((ticket: any) => (
-                    <TableRow key={ticket.id}>
-                      <TableCell className="font-mono text-sm">#{ticket.id.slice(0, 8)}</TableCell>
-                      <TableCell className="font-medium">{ticket.subject}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <User className="h-4 w-4" />
-                          {ticket.users?.name || "Unknown"}
-                        </div>
-                      </TableCell>
-                      <TableCell>{ticket.category}</TableCell>
-                      <TableCell>
-                        <Badge className={getPriorityColor(ticket.priority)}>
-                          {ticket.priority.charAt(0).toUpperCase() + ticket.priority.slice(1)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {getStatusIcon(ticket.status)}
-                          <Badge className={getStatusColor(ticket.status)}>
-                            {ticket.status.replace("_", " ").charAt(0).toUpperCase() +
-                              ticket.status.replace("_", " ").slice(1)}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell>{new Date(ticket.created_at).toLocaleDateString()}</TableCell>
-                      <TableCell className="text-right">
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedTicket(ticket)
-                                fetchTicketMessages(ticket.id)
-                              }}
-                            >
-                              View
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="sm:max-w-[600px]">
-                            <DialogHeader>
-                              <DialogTitle>Ticket #{selectedTicket?.id.slice(0, 8)}</DialogTitle>
-                              <DialogDescription>{selectedTicket?.subject}</DialogDescription>
-                            </DialogHeader>
-                            {selectedTicket && (
-                              <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <div className="space-y-1">
-                                    <p className="text-sm font-medium">Status</p>
-                                    <Select
-                                      value={selectedTicket.status}
-                                      onValueChange={(value) => handleStatusUpdate(selectedTicket.id, value)}
-                                    >
-                                      <SelectTrigger className="w-[180px]">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="open">Open</SelectItem>
-                                        <SelectItem value="in_progress">In Progress</SelectItem>
-                                        <SelectItem value="resolved">Resolved</SelectItem>
-                                        <SelectItem value="closed">Closed</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-sm text-muted-foreground">Priority</p>
-                                    <Badge className={getPriorityColor(selectedTicket.priority)}>
-                                      {selectedTicket.priority.charAt(0).toUpperCase() +
-                                        selectedTicket.priority.slice(1)}
-                                    </Badge>
-                                  </div>
-                                </div>
-
-                                <div className="border rounded-lg p-4 bg-muted/50">
-                                  <p className="text-sm font-medium mb-2">Original Message</p>
-                                  <p className="text-sm">{selectedTicket.description}</p>
-                                </div>
-
-                                <div className="space-y-4 max-h-60 overflow-y-auto">
-                                  {messages.map((message: any) => (
-                                    <div
-                                      key={message.id}
-                                      className={`p-3 rounded-lg ${
-                                        message.is_internal ? "bg-blue-50 border-l-4 border-blue-500" : "bg-gray-50"
-                                      }`}
-                                    >
-                                      <div className="flex items-center justify-between mb-2">
-                                        <p className="text-sm font-medium">{message.users?.name || "Support Agent"}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                          {new Date(message.created_at).toLocaleString()}
-                                        </p>
-                                      </div>
-                                      <p className="text-sm">{message.message}</p>
-                                    </div>
-                                  ))}
-                                </div>
-
-                                <form onSubmit={handleSendMessage} className="space-y-2">
-                                  <Textarea
-                                    placeholder="Type your response..."
-                                    value={newMessage}
-                                    onChange={(e) => setNewMessage(e.target.value)}
-                                    rows={3}
-                                  />
-                                  <Button type="submit" disabled={!newMessage.trim()}>
-                                    Send Response
-                                  </Button>
-                                </form>
-                              </div>
-                            )}
-                          </DialogContent>
-                        </Dialog>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+    <div className="container max-w-7xl py-8">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Support Ticket Management</h1>
       </div>
-    </AdminCheck>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Filter and Search Tickets</CardTitle>
+          <CardDescription>Refine the list of tickets by status, priority, or search term.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <Label htmlFor="status-filter">Status</Label>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger id="status-filter">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="closed">Closed</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="priority-filter">Priority</Label>
+            <Select value={filterPriority} onValueChange={setFilterPriority}>
+              <SelectTrigger id="priority-filter">
+                <SelectValue placeholder="Filter by priority" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Priorities</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="relative">
+            <Label htmlFor="search-tickets">Search Subject</Label>
+            <Input
+              id="search-tickets"
+              type="text"
+              placeholder="Search by subject..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8"
+            />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Ticket ID</TableHead>
+                <TableHead>Subject</TableHead>
+                <TableHead>User Email</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Priority</TableHead>
+                <TableHead>Created At</TableHead>
+                <TableHead className="w-[80px] text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tickets.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    No support tickets found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                tickets.map((ticket) => (
+                  <TableRow key={ticket.id}>
+                    <TableCell className="font-medium">{ticket.id.substring(0, 8)}...</TableCell>
+                    <TableCell>{ticket.subject}</TableCell>
+                    <TableCell>{ticket.users?.email || "N/A"}</TableCell>
+                    <TableCell>{getStatusBadge(ticket.status)}</TableCell>
+                    <TableCell>{getPriorityBadge(ticket.priority)}</TableCell>
+                    <TableCell>{format(new Date(ticket.created_at), "PPP")}</TableCell>
+                    <TableCell className="text-right">
+                      <Link href={`/admin/support/${ticket.id}`}>
+                        <Button variant="outline" size="icon">
+                          <Eye className="h-4 w-4" />
+                          <span className="sr-only">View Details</span>
+                        </Button>
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
   )
 }

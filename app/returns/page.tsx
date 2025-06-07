@@ -1,180 +1,136 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useEffect } from "react"
-import { AuthCheck } from "@/components/auth-check"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
+import React, { useState } from "react"
+import { useRouter } from "next/navigation"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft } from "lucide-react"
-import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { toast } from "@/components/ui/use-toast"
 
-export default function ReturnsPage() {
-  const [orders, setOrders] = useState([])
-  const [selectedOrder, setSelectedOrder] = useState("")
+export default function ReturnRequestPage() {
+  const [orderId, setOrderId] = useState("")
   const [reason, setReason] = useState("")
-  const [description, setDescription] = useState("")
+  const [details, setDetails] = useState("")
   const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    fetchOrders()
-  }, [])
-
-  const fetchOrders = async () => {
-    try {
-      const response = await fetch("/api/orders")
-      const data = await response.json()
-      setOrders(data.filter((order: any) => order.status === "delivered"))
-    } catch (error) {
-      console.error("Error fetching orders:", error)
-    }
-  }
+  const supabase = createClientComponentClient()
+  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
     try {
-      const response = await fetch("/api/returns", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          order_id: selectedOrder,
-          reason,
-          description,
-        }),
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (!user) {
+        toast({
+          title: "Authentication Required",
+          description: "Please sign in to submit a return request.",
+          variant: "destructive",
+        })
+        router.push("/sign-in")
+        return
+      }
+
+      // Check if order exists and belongs to the user
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("id", orderId)
+        .eq("user_id", user.id)
+        .single()
+
+      if (orderError || !order) {
+        toast({
+          title: "Order Not Found",
+          description: "The order ID is invalid or does not belong to your account.",
+          variant: "destructive",
+        })
+        setLoading(false)
+        return
+      }
+
+      const { error } = await supabase.from("return_requests").insert({
+        user_id: user.id,
+        order_id: orderId,
+        reason: reason,
+        details: details,
+        status: "pending",
       })
 
-      if (response.ok) {
-        alert("Return request submitted successfully!")
-        setSelectedOrder("")
-        setReason("")
-        setDescription("")
+      if (error) {
+        throw error
       }
-    } catch (error) {
+
+      toast({
+        title: "Return Request Submitted",
+        description: "Your return request has been submitted successfully. We will review it shortly.",
+      })
+
+      setOrderId("")
+      setReason("")
+      setDetails("")
+    } catch (error: any) {
       console.error("Error submitting return request:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to submit return request. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <AuthCheck>
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <Link
-            href="/orders"
-            className="inline-flex items-center text-sm text-muted-foreground hover:text-primary mb-4"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Orders
-          </Link>
-          <h1 className="text-3xl font-bold mb-2">Return & Refund Request</h1>
-          <p className="text-muted-foreground">Request a return or refund for your delivered orders</p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <Card>
-            <CardHeader>
-              <CardTitle>Submit Return Request</CardTitle>
-              <CardDescription>Fill out the form below to request a return or refund</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="order">Select Order</Label>
-                  <Select value={selectedOrder} onValueChange={setSelectedOrder}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose an order" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {orders.map((order: any) => (
-                        <SelectItem key={order.id} value={order.id}>
-                          Order #{order.order_number} - ${order.total}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="reason">Reason for Return</Label>
-                  <Select value={reason} onValueChange={setReason}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a reason" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="defective">Defective Product</SelectItem>
-                      <SelectItem value="wrong-item">Wrong Item Received</SelectItem>
-                      <SelectItem value="not-as-described">Not as Described</SelectItem>
-                      <SelectItem value="damaged">Damaged in Shipping</SelectItem>
-                      <SelectItem value="changed-mind">Changed Mind</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Please provide details about your return request..."
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={4}
-                    required
-                  />
-                </div>
-
-                <Button type="submit" className="w-full" disabled={loading || !selectedOrder || !reason}>
-                  {loading ? "Submitting..." : "Submit Return Request"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Return Policy</CardTitle>
-              <CardDescription>Please review our return policy before submitting a request</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <h4 className="font-semibold">Return Window</h4>
-                <p className="text-sm text-muted-foreground">
-                  Items can be returned within 30 days of delivery for a full refund.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="font-semibold">Condition Requirements</h4>
-                <p className="text-sm text-muted-foreground">
-                  Items must be in original condition with all tags and packaging intact.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="font-semibold">Processing Time</h4>
-                <p className="text-sm text-muted-foreground">
-                  Return requests are typically processed within 2-3 business days.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="font-semibold">Refund Method</h4>
-                <p className="text-sm text-muted-foreground">
-                  Refunds will be issued to the original payment method within 5-7 business days.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </AuthCheck>
+    <div className="container max-w-2xl py-8">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold">Submit a Return Request</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label htmlFor="orderId">Order ID</Label>
+              <Input
+                id="orderId"
+                type="text"
+                placeholder="Enter your order ID"
+                value={orderId}
+                onChange={(e) => setOrderId(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="reason">Reason for Return</Label>
+              <Input
+                id="reason"
+                type="text"
+                placeholder="e.g., Damaged item, Wrong product, Changed mind"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="details">Additional Details (Optional)</Label>
+              <Textarea
+                id="details"
+                placeholder="Provide more details about your return, e.g., condition of the item, specific issues."
+                value={details}
+                onChange={(e) => setDetails(e.target.value)}
+                rows={5}
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? "Submitting..." : "Submit Request"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   )
 }

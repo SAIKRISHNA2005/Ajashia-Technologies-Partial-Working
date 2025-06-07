@@ -1,71 +1,136 @@
 "use client"
 
-import { useState } from "react"
 import { useCart } from "@/components/cart-provider"
 import { CheckoutForm } from "@/components/checkout/checkout-form"
 import { OrderSummary } from "@/components/checkout/order-summary"
 import { PaymentMethods } from "@/components/checkout/payment-methods"
-import { AuthCheck } from "@/components/auth-check"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Stepper } from "@/components/ui/stepper"
-
-const checkoutSteps = [
-  { title: "Shipping", description: "Enter your address" },
-  { title: "Payment", description: "Choose payment method" },
-  { title: "Review", description: "Confirm your order" },
-]
+import { Skeleton } from "@/components/ui/skeleton"
+import { CheckoutProvider } from "@/components/checkout/checkout-provider"
+import { formatPrice } from "@/lib/utils"
+import Link from "next/link"
+import { Separator } from "@/components/ui/separator"
+import Image from "next/image"
 
 export default function CheckoutPage() {
-  const [currentStep, setCurrentStep] = useState(0)
-  const { items } = useCart()
+  const { cart, isLoading } = useCart()
 
-  if (items.length === 0) {
+  if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold mb-4">No items to checkout</h1>
-        <p className="text-muted-foreground">Please add items to your cart before proceeding to checkout.</p>
+      <div className="container mx-auto px-4 py-8">
+        <div className="grid gap-8 md:grid-cols-2">
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-1/3" />
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-32 w-full" />
+          </div>
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-1/3" />
+            <Skeleton className="h-32 w-full" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!cart || cart.length === 0) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card className="mx-auto max-w-md">
+          <CardHeader>
+            <CardTitle className="text-center">Your cart is empty</CardTitle>
+          </CardHeader>
+          <CardContent className="text-center">
+            <p className="mb-4 text-muted-foreground">
+              Add some items to your cart before checking out.
+            </p>
+            <Button asChild>
+              <Link href="/products">Continue Shopping</Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
-    <AuthCheck>
+    <CheckoutProvider>
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-4">Checkout</h1>
-          <Stepper steps={checkoutSteps} currentStep={currentStep} />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
+        <h1 className="mb-8 text-3xl font-bold tracking-tight">Checkout</h1>
+        <div className="grid gap-8 md:grid-cols-2">
+          <div className="space-y-8">
             <Card>
               <CardHeader>
-                <CardTitle>
-                  {currentStep === 0 && "Shipping Information"}
-                  {currentStep === 1 && "Payment Method"}
-                  {currentStep === 2 && "Order Review"}
-                </CardTitle>
+                <CardTitle>Shipping Information</CardTitle>
               </CardHeader>
               <CardContent>
-                {currentStep === 0 && <CheckoutForm onNext={() => setCurrentStep(1)} />}
-                {currentStep === 1 && (
-                  <PaymentMethods onBack={() => setCurrentStep(0)} onNext={() => setCurrentStep(2)} />
-                )}
-                {currentStep === 2 && (
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4">Review Your Order</h3>
-                    <p>Order review content will go here...</p>
-                  </div>
-                )}
+                <CheckoutForm />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Payment Method</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <PaymentMethods />
               </CardContent>
             </Card>
           </div>
 
-          <div className="lg:col-span-1">
-            <OrderSummary />
+          <div className="space-y-8">
+            <Card>
+              <CardHeader>
+                <CardTitle>Order Summary</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <OrderSummary />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Order Items</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {cart.map((item) => (
+                    <div key={item.id}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          {item.image && (
+                            <div className="relative h-16 w-16 overflow-hidden rounded-md">
+                              <Image
+                                src={item.image}
+                                alt={item.name}
+                                fill
+                                className="object-cover"
+                                sizes="(max-width: 64px) 100vw, 64px"
+                                priority
+                              />
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-medium">{item.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              Quantity: {item.quantity}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="font-medium">
+                          {formatPrice(item.price * item.quantity)}
+                        </p>
+                      </div>
+                      <Separator className="my-4" />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
-    </AuthCheck>
+    </CheckoutProvider>
   )
 }
