@@ -1,27 +1,22 @@
 "use client"
 
-import { Card, CardContent } from "@/components/ui/card"
+import { StatCard } from "@/components/about/StatCard"
 
 const stats = [
-  { label: "Happy Customers", value: "2M+" },
-  { label: "Products Sold", value: "10M+" },
-  { label: "Countries Served", value: "25+" },
-  { label: "Team Members", value: "500+" },
+  { label: "Happy Customers", value: 1000 },
+  { label: "Products Sold", value: 2500 },
+  { label: "Various States", value: 10 },
+  { label: "Projects Made", value: 750 },
 ]
 
 export function AboutStats() {
   return (
-    <section className="py-16 bg-blue-600 text-white">
+    <section className="py-24 bg-blue-600 text-white">
       <div className="container mx-auto px-4">
-        <h2 className="text-3xl font-bold text-center mb-12">Our Impact</h2>
-        <div className="grid md:grid-cols-4 gap-8">
+        <h2 className="text-4xl md:text-5xl font-bold text-center mb-16">Our Impact</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
           {stats.map((stat) => (
-            <Card key={stat.label} className="bg-white/10 border-white/20">
-              <CardContent className="p-6 text-center">
-                <div className="text-4xl font-bold mb-2">{stat.value}</div>
-                <div className="text-blue-100">{stat.label}</div>
-              </CardContent>
-            </Card>
+            <StatCard key={stat.label} value={stat.value} label={stat.label} />
           ))}
         </div>
       </div>
